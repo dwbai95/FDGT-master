@@ -14,7 +14,7 @@ $ conda env create -f environment.yml
 
 ## Run the Model 
 
-Before running the model, execute code file_directory_correction.py to ensure that the file directory is correct.
+Before running the model, execute code directory_correction.py to ensure that the directory is correct.
 
 To train the model on different datasets just use the command:
 
