@@ -12,10 +12,10 @@ def mkdir(path):
  
     if not folder:                   
         os.makedirs(path)            
-        print ("---  The file directory is correct...  ---")
+        print ("---  The directory is correct...  ---")
  
     else:
-        print ("---  The file directory has been created correctly!  ---")
+        print ("---  The directory has been created correctly!  ---")
 
 data_id = [3, 4, 7, 8]
 for i in data_id:
