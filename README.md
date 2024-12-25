@@ -2,7 +2,7 @@
 Future-heuristic Differential Graph Transformer for Traffic Flow Forecasting
 
 This is a PyTorch implementation of FDGT in the following paper: \
-Dewei Bai, Dawen Xia, Dan Huang, Yang Hu, Yantao Li, Huaqing Li, and Hui Xiong. Future-heuristic Differential Graph Transformer for Traffic Flow Forecasting.
+Dewei Bai, Dawen Xia, et al. Future-heuristic Differential Graph Transformer for Traffic Flow Forecasting.
 
 
 
