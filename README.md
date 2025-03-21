@@ -26,14 +26,16 @@ It integrates **graph neural networks (GNNs) and transformers**, leveraging **fu
 To install dependencies, use the following command:
 ```bash
 conda env create -f environment.yml 
+```
 
 ## **Run the Model**
 
 - **To ensure that the directory is correct, just use the command:
 ```bash
 python directory_correction.py
-
+```
 
 - **To train the model on different datasets just use the command:
 ```bash
 python Run_FDGT.py
+```
