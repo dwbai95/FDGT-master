@@ -5,7 +5,6 @@ channels:
   - defaults
 dependencies:
   - cudatoolkit=11.1
-  - matplotlib
   - numpy
   - pandas
   - pip
@@ -17,18 +16,6 @@ dependencies:
   - pyyaml
   - statsmodels
   - tables
-  - future
-  - math
-  - time
-  - pynvml
-  - logging    
-  - os   
-  - argparse    
+  - futurese    
   - configparser    
-  - random 
   - sklearn
-  - sys
-  - datetime
-  - copy
-  - csv
-
