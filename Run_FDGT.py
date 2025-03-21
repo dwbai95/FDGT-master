@@ -16,11 +16,14 @@ import torch.nn as nn
 
 import torch.optim as optim
 import torch.utils as utils
-import pynvml
+#import pynvml
 
 
 from script import dataloader, utility, earlystopping 
 from model import models
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+
 
 
 class Logger(object):
@@ -53,15 +56,15 @@ def worker_init_fn(worker_id):
     
      
 def get_parameters(dataset, gpu_index): 
-    parser = argparse.ArgumentParser(description='STGCN for road traffic prediction') 
+    parser = argparse.ArgumentParser(description='FDGT for road traffic prediction')
     parser.add_argument('--enable_cuda', type=bool, default = True,
-                        help='enable CUDto_csvfault as True')
+                        help='enable CUDA to_csv fault as True')
 
     parser.add_argument('--n_pred', type=int, default=12, 
                         help='the number of time interval for predcition, default as 3') 
-    parser.add_argument('--epochs', type=int, default=200, 
+    parser.add_argument('--epochs', type=int, default=300,
                         help='epochs, default as 200') 
-    parser.add_argument('--dataset_config_path', type=str, default='./config/'+dataset+'.ini',
+    parser.add_argument('--dataset_config_path', type=str, default='./FDGT_master_0/config/'+dataset+'.ini',
                         help='the path of dataset config file, pemsd7-m.ini for PeMSD7-M, \
                             metr-la.ini for METR-LA, and pems-bay.ini for PEMS-BAY')   
     parser.add_argument('--opt', type=str, default='AdamW',
@@ -72,11 +75,24 @@ def get_parameters(dataset, gpu_index):
     for k in list(vars(args).keys()):      
         print('%s: %s' % (k, vars(args)[k]))
     
-    # print(args.enable_cuda)
 
     config = configparser.ConfigParser() 
 
-    def ConfigSectionMap(section): 
+    
+
+    # Running in Nvidia GPU (CUDA) or CPU
+    if args.enable_cuda and torch.cuda.is_available():
+        device = torch.device("cuda:"+str(gpu_index))
+    else:
+        device = torch.device("cpu")
+        
+    enable_cuda = args.enable_cuda
+    dataset_config_path = args.dataset_config_path
+
+    config.read(dataset_config_path, encoding="utf-8")
+    
+
+    def ConfigSectionMap(section):  
         dict1 = {} 
         options = config.options(section) 
         for option in options:
@@ -88,18 +104,6 @@ def get_parameters(dataset, gpu_index):
                 print("exception on %s!" % option) 
                 dict1[option] = None 
         return dict1
-    
-    # Running in Nvidia GPU (CUDA) or CPU
-    if args.enable_cuda and torch.cuda.is_available():
-        device = torch.device("cuda:"+str(gpu_index))
-    else:
-        device = torch.device("cpu")
-        
-    # print(device)
-    enable_cuda = args.enable_cuda
-    dataset_config_path = args.dataset_config_path
-
-    config.read(dataset_config_path, encoding="utf-8")
     
     for k in ConfigSectionMap('data'):          
         print(k, ':', ConfigSectionMap('data')[k])
@@ -140,7 +144,7 @@ def get_parameters(dataset, gpu_index):
     adj_mat = dataloader.load_weighted_adjacency_matrix(wam_path, n_vertex) 
 
 
-    opt = args.opt 
+    opt = args.opt
     
 
     return device,  n_his, n_pred, day_slot, time_intvl, time_len, time_start, data, adj_mat, stblock_num, n_feature, n_vertex, drop_rate, opt, learning_rate, weight_decay_rate, step_size, gamma, enable_cuda
@@ -153,7 +157,6 @@ def data_preparate(future_guided, future_opt, data, device, n_his, n_pred, day_s
     
     data_col, n_vertex, n_feature = data.shape
     
-    # recommended dataset split rate as train: val: test = 60: 20: 20, 70: 15: 15 or 80: 10: 10 ；
     val_rate = 0.2
     test_rate = 0.2
 
@@ -168,12 +171,11 @@ def data_preparate(future_guided, future_opt, data, device, n_his, n_pred, day_s
     zscore = []
     zscore_flow = preprocessing.StandardScaler() 
     zscore_lane = preprocessing.StandardScaler()
-    zscore_speed = preprocessing.StandardScaler() 
-    zscore.append(zscore_speed)
+    zscore_speed = preprocessing.StandardScaler()
     zscore.append(zscore_flow)
     zscore.append(zscore_lane)
-    
-    
+    zscore.append(zscore_speed)
+
 
     data_z = np.zeros([data_col, n_vertex, n_feature])
     
@@ -181,7 +183,7 @@ def data_preparate(future_guided, future_opt, data, device, n_his, n_pred, day_s
     for i in range(n_feature):
         data_z[:,:,i] = zscore[i].fit_transform(data[:,:,i]) 
     
-    x_data, y_data = dataloader.data_transform(future_guided, future_opt, data_z, n_feature, n_his, n_pred, time_len, time_start, device)
+    x_data, y_data = dataloader.data_transform(future_guided, data_z, n_feature, n_his, n_pred, time_len, time_start, device)
     time_index = pd.date_range(start=time_start,  periods = time_len, freq='5min', name=None)
     data_col = len(x_data)
     len_val = int(math.floor(data_col * val_rate)) 
@@ -190,11 +192,11 @@ def data_preparate(future_guided, future_opt, data, device, n_his, n_pred, day_s
     time_index_test = time_index[-(n_pred - 1 + len_test):]
     
     x_train = x_data[: len_train] 
-    x_val = x_data[len_train: len_train + len_val] 
-    x_test = x_data[len_train + len_val:] 
-    
-    y_train = y_data[: len_train]
-    y_val = y_data[len_train: len_train + len_val] 
+    x_val = x_data[len_train: len_train + len_val]
+    x_test = x_data[len_train + len_val:]
+
+    y_train = y_data[: len_train] 
+    y_val = y_data[len_train: len_train + len_val]
     y_test = y_data[len_train + len_val:] 
  
     
@@ -226,11 +228,13 @@ def model_main(future_guided, graph_conv_type, adj_mat, mat_type, order, Kt, Ks,
         
     mat = utility.calculate_laplacian_matrix(adj_mat, mat_type) 
     chebconv_matrix = torch.from_numpy(mat).float().to(device) 
-    # print(chebconv_matrix.shape)
-    model = models.FDGT(future_guided, order, Kt, Ks, blocks, batch_size, n_feature, n_his, n_vertex, gated_act_func, graph_conv_type, chebconv_matrix, drop_rate, device).to(device) # 
+
+
+    model = models.FDGT(future_guided, order, Kt, Ks, blocks, batch_size, n_feature, n_his, n_vertex, gated_act_func, graph_conv_type, chebconv_matrix, drop_rate, device).to(device) 
     
    
     loss = nn.MSELoss()
+
     learning_rate = learning_rate
     weight_decay_rate = weight_decay_rate
     early_stopping = earlystopping.EarlyStopping(patience=train_patience, path=model_save_path, verbose=True)
@@ -245,8 +249,8 @@ def model_main(future_guided, graph_conv_type, adj_mat, mat_type, order, Kt, Ks,
     else:
         raise ValueError(f'ERROR: optimizer {opt} is undefined.')
 
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
-
+   
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, eta_min=1e-5, T_max=20)
     return model, loss, early_stopping, optimizer, scheduler
 
 def train(loss, epochs, optimizer, scheduler, early_stopping, model, model_save_path, train_iter, val_iter, enable_cuda, n_pred, device):
@@ -257,19 +261,18 @@ def train(loss, epochs, optimizer, scheduler, early_stopping, model, model_save_
     epoch_list = []
     Inference_time_list = []
     Training_time_list = []
+    
     for epoch in range(epochs):
-        l_sum, n = 0.0, 0  # 'l_sum' is epoch sum loss, 'n' is epoch instance number
+        l_sum, n = 0.0, 0  
         model.train()
         start_training = time.time()
-        for x, y in train_iter: # tqdm：（batch_size,n_feature,n_his,n_vertex）;y:(batch_size,n_vertex)
-            # y_pred = model(x).view(len(x), n_pred,-1)  # [batch_size, num_nodes]
-            y_pred = model(x.to(device))  # [batch_size, num_nodes]
-            #print('x',x.shape,'y_pred',y_pred.shape,'y',y.shape)
-            
+        for x, y in train_iter: 
+           
+            y_pred = model(x.to(device)) 
+
+          
             l = loss(y_pred, y.to(device))
             
-            
-            # print('loss:', l)
             optimizer.zero_grad()
             l.backward()
             optimizer.step()
@@ -295,14 +298,14 @@ def train(loss, epochs, optimizer, scheduler, early_stopping, model, model_save_
         if val_loss < min_val_loss:
             min_val_loss = val_loss
         early_stopping(val_loss, model)
-        # GPU memory usage
-        gpu_mem_alloc = torch.cuda.max_memory_allocated() / 1048576 if enable_cuda and torch.cuda.is_available() else 0
+
+        gpu_mem_alloc = torch.cuda.max_memory_allocated(gpu_index) / 1048576 if enable_cuda and torch.cuda.is_available() else 0
         print('Epoch: {:03d} | Lr: {:.8f} |Train loss: {:.4f} | Val loss: {:.4f} | GPU occupy: {:.2f} MiB'.\
             format(epoch+1, optimizer.param_groups[0]['lr'], l_sum / n, val_loss, gpu_mem_alloc))
         print('Training Time:', round(end_training-start_training, 2),'s/epoch')
         print('Inference Time:',round(end_inference-start_inference, 2),'s')
         
-        if epoch % 20 == 0:
+        if (epoch+1) % 20 == 0:
             test(model_save_path, zscore, loss, model, test_iter, n_pred, device, False)
         
         if early_stopping.early_stop:
@@ -320,8 +323,10 @@ def val(model, val_iter, n_pred, device):
     l_sum, n = 0.0, 0
     with torch.no_grad():
         for x, y in val_iter:
-            y_pred = model(x.to(device)).view(len(x), n_pred, -1)
+
+            y_pred = model(x.to(device)) 
             l = loss(y_pred, y.to(device))
+
             l_sum += l.item() * y.shape[0]
             n += y.shape[0]
         return l_sum / n
@@ -337,8 +342,7 @@ def test(model_save_path, zscore, loss, model, test_iter, n_pred, device, out):
         return accuracy_pd, out_unnormalized, target_unnormalized
 
 def data_save(time_index_test, out_unnormalized, target_unnormalized, save_data_path, n_pred = 12):
-    # produce data slices for x_data and y_data
-    
+  
     num = out_unnormalized.shape[1]
     time_list = []
     
@@ -352,73 +356,74 @@ def data_save(time_index_test, out_unnormalized, target_unnormalized, save_data_
     
 
 if __name__ == "__main__":
-    # For stable experiment results
-    SEED = 1608825600
+
+    SEED = 2024
     set_seed(SEED)
 
-    # For multi-threading dataloader
+
     worker_init_fn(SEED)
-    pynvml.nvmlInit()
-    try:
-        
-        dataset = 'PEMS08'
-        save_path = './save/'+dataset+'/'
-        gpu_index = 0
-        order = 1
-        batch_size = 32
-        epochs = 200
-        train_patience = 20
-        gated_act_func = 'glu'    
-        Kt = 3
-   
-        local_graph = 'ChebNet' #  ChebNet AND GCN
-        Ks = 3
-        if (local_graph == 'GCN') and (Ks != 2):
-            Ks = 2
-        local_mat_type = 'sym'  
 
-        future_guided = True
-        
-        future_opt = False
-        future_model = 'guided-' + str(future_guided) + ',' + 'opt-' + str(future_opt)
-        mat_type = local_graph +'_' + local_mat_type           # 
+    dataset = 'PEMS08'
+    save_path = './FDGT_master_0/save/'+dataset+'/'
+    gpu_index = 0
+    order = 2
+    batch_size = 32
+    epochs = 200
+    train_patience = 30
+    gated_act_func = 'glu'    
+    Kt = 3
 
-        time_mask = datetime.datetime.now().strftime('%m-%d-%H-%M')
+    local_graph = 'ChebNet'
+    Ks = 3
+    if (local_graph == 'GCN') and (Ks != 2):
+        Ks = 2
+    local_mat_type = 'sym'  
+
+    future_guided = True
+    
+    future_opt = False
+    future_model = 'guided-' + str(future_guided) + ',' + 'opt-' + str(future_opt)
+    mat_type = local_graph +'_' + local_mat_type           # 
+
+    time_mask = datetime.datetime.now().strftime('%m-%d-%H-%M')
 
 
-        device,  n_his, n_pred, day_slot, time_intvl, time_len, time_start, data, adj_mat, stblock_num, n_feature, n_vertex, drop_rate, opt, learning_rate, weight_decay_rate, step_size, gamma, enable_cuda = get_parameters(dataset, gpu_index)
+    device,  n_his, n_pred, day_slot, time_intvl, time_len, time_start, data, adj_mat, stblock_num, n_feature, n_vertex, drop_rate, opt, learning_rate, weight_decay_rate, step_size, gamma, enable_cuda = get_parameters(dataset, gpu_index)
+    print(device)
+
+    zscore, train_iter, val_iter, test_iter, data, time_index_test = data_preparate(future_guided, future_opt, data, device, n_his, n_pred, day_slot, time_len, time_start, batch_size)
 
 
-        zscore, train_iter, val_iter, test_iter, data, time_index_test = data_preparate(future_guided, future_opt, data, device, n_his, n_pred, day_slot, time_len, time_start, batch_size)
+    time_pred = n_pred * time_intvl #
+    time_pred_str = str(time_pred) + '_mins'
 
 
-        time_pred = n_pred * time_intvl #
-        time_pred_str = str(time_pred) + '_mins'
+    model_name = 'FDT' + '_' + 'future' + '{' +  future_model + '}' + 'order'+ str(order) + '_batch_' + str(batch_size)
+    sys.stdout = Logger('./FDGT_master_0/save/'+dataset+'/'+'log/'+model_name+ '_'+dataset+'_'+str(time_mask)+'.txt')
+    
 
+    save_data_path = save_path + 'data/'
+    model_save_path = save_path + model_name + '_' + dataset + '_' + time_pred_str + '.pth' #
+    print('Time of model execution:',time_mask)
+    print('Device is GPU:', gpu_index)
+    print('Order is:', order)
 
-        model_name = 'FDT' + '_' + 'future' + '{' +  future_model + '}' + 'order'+ str(order) + '_batch_' + str(batch_size)
-        sys.stdout = Logger('./save/'+dataset+'/'+'log/'+model_name+ '_'+dataset+'_'+str(time_mask)+'.txt')
-        save_data_path = save_path + 'data/'
-        model_save_path = save_path + model_name + '_' + dataset + '_' + time_pred_str + '.pth' #
-        print('Time of model execution:',time_mask)
-        print('Device is GPU:', gpu_index)
-        print('Order is:', order)
-
-        model, loss, early_stopping, optimizer, scheduler = model_main(future_guided, local_graph, adj_mat, mat_type, order, Kt, Ks, batch_size, stblock_num, n_feature, n_his, n_pred, n_vertex, gated_act_func, drop_rate, device, learning_rate, weight_decay_rate, model_save_path, step_size, train_patience,  gamma, opt)
+    model, loss, early_stopping, optimizer, scheduler = model_main(future_guided, local_graph, adj_mat, mat_type, order, Kt, Ks, batch_size, stblock_num, n_feature, n_his, n_pred, n_vertex, gated_act_func, drop_rate, device, learning_rate, weight_decay_rate, model_save_path, step_size, train_patience,  gamma, opt)
 
 
     # Training
-        loss_list = train(loss, epochs, optimizer, scheduler, early_stopping, model, model_save_path, train_iter, val_iter, enable_cuda, n_pred, device)
+    loss_list = train(loss, epochs, optimizer, scheduler, early_stopping, model, model_save_path, train_iter, val_iter, enable_cuda, n_pred, device)
 
-        # Testing
-        accuracy_pd, out_unnormalized, target_unnormalized = test(model_save_path, zscore, loss, model, test_iter, n_pred, device, True)
-        print('Data saving .......')
-        data_save(time_index_test, out_unnormalized, target_unnormalized, save_data_path, n_pred)
-        loss_list.to_csv( './save/'+dataset+'/'+'loss/'+model_name+ '_'+dataset+'_'+str(time_mask)+'.csv')
-        accuracy_pd.to_csv( './save/'+dataset+'/'+'accuracy/'+model_name+ '_'+dataset+'_'+str(time_mask)+'.csv')
-        print('Data is saved.')
-        print('The experiment has been completed.')
-        
+    # Testing
+    accuracy_pd, out_unnormalized, target_unnormalized = test(model_save_path, zscore, loss, model, test_iter, n_pred, device, True)
+    print('Data saving .......')
+    data_save(time_index_test, out_unnormalized, target_unnormalized, save_data_path, n_pred)
+    loss_list.to_csv( './FDGT_master_0/save/'+dataset+'/'+'loss/'+model_name+ '_'+dataset+'_'+str(time_mask)+'.csv')
+    accuracy_pd.to_csv( './FDGT_master_0/save/'+dataset+'/'+'accuracy/'+model_name+ '_'+dataset+'.csv')
+    print('Data is saved.')
+    print('The experiment has been completed.')
+    stdout_original = sys.stdout
+    try:
+        sys.stdout = stdout_original
     finally:
-        sys.stdout.reset()
-    
+        sys.stdout = stdout_original
