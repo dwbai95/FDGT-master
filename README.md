@@ -4,7 +4,7 @@ This is a PyTorch implementation of FDGT, as described in the following paper:
 
 > Dewei Bai, Dawen Xia, et al.  
 > Future-heuristic differential graph transformer for traffic flow forecasting.  
-> Information Sciences, 2025, 701, 121852.  
+> _Information Sciences_, 2025, 701, 121852.  
 
 🚀 **Welcome to cite our work!**
 
