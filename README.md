@@ -21,7 +21,7 @@ Traffic Flow Forecasting (TFF) is crucial for various Intelligent Transportation
 ---
 🔧
 
-** Setup Environment**
+**Setup Environment**
 
 ```bash
 conda env create -f environment.yml 
