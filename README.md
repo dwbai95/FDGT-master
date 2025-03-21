@@ -29,7 +29,11 @@ conda env create -f environment.yml
 
 ## **Run the Model**
 
-- **To ensure that the directory is correct, just use the command: python directory_correction.py
+- **To ensure that the directory is correct, just use the command:
+```bash
+python directory_correction.py
 
 
-- **To train the model on different datasets just use the command: python Run_FDGT.py
+- **To train the model on different datasets just use the command:
+```bash
+python Run_FDGT.py
