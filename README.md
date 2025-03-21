@@ -19,14 +19,15 @@ Traffic Flow Forecasting (TFF) is crucial for various Intelligent Transportation
 - **Configurable Hyperparameters**: Easy tuning via configuration files.
 
 ---
+🔧
 
-**🔧 Setup Environment**
-To install dependencies, use the following command:
+** Setup Environment**
+
 ```bash
 conda env create -f environment.yml 
 ```
 
-**Run the Model**
+**Run**
 
 - To ensure that the directory is correct, just use the command:
 ```bash
