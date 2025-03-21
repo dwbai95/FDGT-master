@@ -26,7 +26,7 @@ To install dependencies, use the following command:
 conda env create -f environment.yml 
 ```
 
-## **Run the Model**
+**Run the Model**
 
 - To ensure that the directory is correct, just use the command:
 ```bash
