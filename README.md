@@ -20,7 +20,7 @@ Traffic Flow Forecasting (TFF) is crucial for various Intelligent Transportation
 
 ---
 
-## **🔧 Setup Python Environment for FDGT**
+**🔧 Setup Environment**
 To install dependencies, use the following command:
 ```bash
 conda env create -f environment.yml 
